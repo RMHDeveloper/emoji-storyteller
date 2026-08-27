@@ -1,0 +1,6 @@
+{
+  "name": "Emoji Storyteller",
+  "description": "Transforms 3-5 emojis into captivating, long-form stories with a selected tone, complete with audio narration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
