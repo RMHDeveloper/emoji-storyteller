@@ -7,6 +7,7 @@ import LoadingPage from './components/LoadingPage';
 import InputPage from './components/InputPage';
 import OutputPage from './components/OutputPage';
 import { MIN_EMOJIS, MAX_EMOJIS, MODEL_CONFIG_BY_MODE } from './constants'; // Import MODEL_CONFIG_BY_MODE
+import { countEmojis } from './utils';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<AppPage>(AppPage.Loading);
@@ -68,12 +69,8 @@ const App: React.FC = () => {
     setSelectedMode(mode);
   }, []);
 
-  const getEmojiCount = (emojiString: string): number => {
-    return (emojiString.match(/(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g) || []).length;
-  };
-
   const handleCreateStory = useCallback(async () => {
-    const emojiCount = getEmojiCount(emojis);
+    const emojiCount = countEmojis(emojis);
     if (emojiCount < MIN_EMOJIS || emojiCount > MAX_EMOJIS) {
       setError(`Please enter between ${MIN_EMOJIS} and ${MAX_EMOJIS} emojis.`);
       return;

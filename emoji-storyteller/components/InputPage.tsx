@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { MIN_EMOJIS, MAX_EMOJIS, MAGIC_BANNER_URL } from '../constants';
+import React from 'react';
+import { MIN_EMOJIS, MAX_EMOJIS } from '../constants';
 import { StoryMode } from '../types';
+import { countEmojis } from '../utils';
+import EmojiPicker from './EmojiPicker';
 
 interface InputPageProps {
   onEmojisChange: (emojis: string) => void;
@@ -20,15 +22,10 @@ const InputPage: React.FC<InputPageProps> = ({
   selectedMode,
   error,
 }) => {
-  const [emojiCount, setEmojiCount] = useState<number>(0);
+  const emojiCount = countEmojis(emojis);
+  const isCountValid = emojiCount >= MIN_EMOJIS && emojiCount <= MAX_EMOJIS;
 
-  useEffect(() => {
-    // A simple regex to count emojis, might not be perfectly accurate for all Unicode cases but good enough for common use.
-    const count = (emojis.match(/(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g) || []).length;
-    setEmojiCount(count);
-  }, [emojis]);
-
-  const isValid = emojiCount >= MIN_EMOJIS && emojiCount <= MAX_EMOJIS && selectedMode !== null;
+  const isValid = isCountValid && selectedMode !== null;
 
   const handleEmojisInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     onEmojisChange(e.target.value);
@@ -58,27 +55,42 @@ const InputPage: React.FC<InputPageProps> = ({
         <label htmlFor="emoji-input" className="text-xl font-bold text-gray-700 mb-2 block text-center">
           Your Emojis
         </label>
-        <input 
+        <input
           id="emoji-input" // Added id for accessibility with label
           type="text"
           className="w-full p-4 border-2 border-orange-300 rounded-full focus:ring-4 focus:ring-yellow-300 focus:outline-none transition-all text-lg placeholder-gray-400 text-center shadow-lg"
-          placeholder="Enter 3-5 Emojis..."
+          placeholder="Tap emojis below, or type your own…"
           value={emojis}
           onChange={handleEmojisInput}
-          maxLength={MAX_EMOJIS * 2} // Allow slightly more characters for non-single emoji characters
+          // maxLength is in UTF-16 code units, and a single emoji can be many of
+          // them (skin tones, ZWJ families, flags). Keep it generous; the real
+          // limit is the emoji count checked below.
+          maxLength={MAX_EMOJIS * 16}
           // On mobile devices, clicking/tapping an input will automatically
           // bring up the system's virtual keyboard (typeboard).
           // No special JavaScript code is typically needed for this default browser behavior.
         />
-        <div className="flex justify-center gap-4 mt-4">
-            {/* Left Counter: Current Emoji Count / Max Emojis */}
-            <div className="flex items-center justify-center w-20 h-20 bg-yellow-200 rounded-full shadow-md border-2 border-yellow-300">
-                <span className="text-xl font-bold text-yellow-800">{emojiCount}/{MAX_EMOJIS}</span>
+
+        <div className="mt-4">
+          <EmojiPicker value={emojis} onChange={onEmojisChange} max={MAX_EMOJIS} />
+        </div>
+
+        <div className="flex flex-col items-center gap-2 mt-4">
+            {/* Emoji counter: current count / max, turns green once the count is valid */}
+            <div
+              className={`flex items-center justify-center w-20 h-20 rounded-full shadow-md border-2 transition-colors
+                ${isCountValid
+                  ? 'bg-green-200 border-green-300 text-green-800'
+                  : 'bg-yellow-200 border-yellow-300 text-yellow-800'
+                }`}
+            >
+                <span className="text-xl font-bold">{emojiCount}/{MAX_EMOJIS}</span>
             </div>
-            {/* Right Counter: Min Emojis / Max Emojis (Visual from image) */}
-            <div className="flex items-center justify-center w-20 h-20 bg-yellow-200 rounded-full shadow-md border-2 border-yellow-300">
-                <span className="text-xl font-bold text-yellow-800">{MIN_EMOJIS}/{MAX_EMOJIS}</span>
-            </div>
+            <p className="text-sm font-semibold text-gray-500">
+              {isCountValid
+                ? 'Looks good!'
+                : `Pick ${MIN_EMOJIS}–${MAX_EMOJIS} emojis`}
+            </p>
         </div>
       </div>
 

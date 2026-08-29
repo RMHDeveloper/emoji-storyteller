@@ -27,8 +27,11 @@ async function decodeAudioData(
   sampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
+  // Respect the view's offset/length and guard against an odd byte count
+  // (Int16Array requires a byte length that is a multiple of 2).
+  const usableBytes = data.byteLength - (data.byteLength % 2);
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, usableBytes / 2);
+  const frameCount = Math.floor(dataInt16.length / numChannels);
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
   for (let channel = 0; channel < numChannels; channel++) {
@@ -40,11 +43,21 @@ async function decodeAudioData(
   return buffer;
 }
 
+function getApiKey(): string {
+  const key = process.env.API_KEY;
+  if (!key) {
+    throw new Error(
+      'Missing Gemini API key. Set GEMINI_API_KEY in your .env.local file and restart the dev server.',
+    );
+  }
+  return key;
+}
+
 // Fix: Update generateStory to return a structured GeneratedStoryContent object
 export async function generateStory(params: StoryGenerationParams): Promise<GeneratedStoryContent> {
   // Always create a new GoogleGenAI instance before making an API call
   // to ensure it uses the most up-to-date API key from the dialog.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
   const modeConfig = MODEL_CONFIG_BY_MODE[params.mode];
   if (!modeConfig) {
@@ -70,8 +83,9 @@ export async function generateStory(params: StoryGenerationParams): Promise<Gene
       temperature: 0.9,
       topK: 40,
       topP: 0.95,
-      // Increased max output tokens to accommodate 400-500 words + JSON overhead
-      maxOutputTokens: 1024, 
+      // 400-500 words of story + title + moral + JSON overhead needs headroom;
+      // 1024 truncated longer stories and produced invalid JSON.
+      maxOutputTokens: 2048,
       thinkingConfig: { thinkingBudget: 0 }, // Disabled thinking budget for faster response
       // Fix: Request JSON response with a defined schema
       responseMimeType: "application/json",
@@ -97,9 +111,15 @@ export async function generateStory(params: StoryGenerationParams): Promise<Gene
     },
   });
 
-  const jsonString = response.text?.trim();
+  let jsonString = response.text?.trim();
   if (!jsonString) {
     throw new Error('Failed to generate story content or received an empty JSON response.');
+  }
+
+  // The model occasionally wraps JSON in a ```json ... ``` markdown fence.
+  const fenced = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced) {
+    jsonString = fenced[1].trim();
   }
 
   try {
@@ -120,7 +140,7 @@ export async function generateStory(params: StoryGenerationParams): Promise<Gene
 export async function textToSpeech(text: string, voiceName: string = TTS_VOICE_NAME): Promise<AudioBuffer> {
   // Always create a new GoogleGenAI instance before making an API call
   // to ensure it uses the most up-to-date API key from the dialog.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
   const response = await ai.models.generateContent({
     model: TTS_MODEL,

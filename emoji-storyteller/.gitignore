@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# local env / secrets
+.env
+.env.local
+.env.*.local
+
+# build output
+dist/
+dist-ssr/
+
+# editor / OS
+.DS_Store
+*.local
+.vscode/*
+!.vscode/extensions.json

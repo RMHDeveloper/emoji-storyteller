@@ -6,229 +6,229 @@ interface AudioPlayerProps {
   audioBuffer: AudioBuffer | null;
 }
 
+const formatTime = (timeInSeconds: number): string => {
+  const safe = Number.isFinite(timeInSeconds) && timeInSeconds > 0 ? timeInSeconds : 0;
+  const minutes = Math.floor(safe / 60);
+  const seconds = Math.floor(safe % 60);
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
 const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBuffer }) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
+  // Committed position - only updated at discrete events (play/pause/seek/end),
+  // never per-frame. It seeds the DOM on re-render; the rAF loop paints between.
+  const [displayTime, setDisplayTime] = useState<number>(0);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const playbackStartTimeRef = useRef<number>(0); // When audioContext.currentTime started playing the current segment
-  const pausedAtRef = useRef<number>(0); // The logical time (displayed) when playback was paused or started
+  const playbackStartTimeRef = useRef<number>(0); // audioContext.currentTime when the current segment started
+  const pausedAtRef = useRef<number>(0); // logical (displayed) time when playback last started/resumed
+  const currentTimeRef = useRef<number>(0); // live logical playback position
 
-  // Ref to hold the latest isPlaying state to avoid stale closures in requestAnimationFrame loop
-  const isPlayingRef = useRef(isPlaying);
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
+  const durationRef = useRef(duration);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
 
-  // Initialize AudioContext and source when audioBuffer changes
+  // The progress bar and time label are updated by writing to the DOM directly
+  // from the rAF loop. Driving them through React state instead re-rendered the
+  // component ~60x/s, which made the whole panel flicker during playback.
+  //
+  // The fill is animated with `transform: scaleX()` (GPU-composited, no layout)
+  // rather than `width` (triggers layout every frame -> the page wobbled while
+  // scrolling). The time label is only rewritten when the whole second changes.
+  const fillRef = useRef<HTMLDivElement | null>(null);
+  const currentLabelRef = useRef<HTMLSpanElement | null>(null);
+  const lastLabelSecondRef = useRef<number>(-1);
+
+  const paint = useCallback((time: number) => {
+    const total = durationRef.current;
+    const ratio = total > 0 ? Math.min(Math.max(time / total, 0), 1) : 0;
+    if (fillRef.current) fillRef.current.style.transform = `scaleX(${ratio})`;
+
+    const whole = Math.floor(time);
+    if (currentLabelRef.current && whole !== lastLabelSecondRef.current) {
+      lastLabelSecondRef.current = whole;
+      currentLabelRef.current.textContent = formatTime(time);
+    }
+  }, []);
+
+  // commit: also push to React state (for events, not per-frame updates).
+  const setPosition = useCallback((time: number, commit = false) => {
+    currentTimeRef.current = time;
+    paint(time);
+    if (commit) setDisplayTime(time);
+  }, [paint]);
+
+  const cancelProgressLoop = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
+
+  // Tear down the active source WITHOUT letting its `onended` handler run app logic.
+  // (source.stop() dispatches `ended` asynchronously; if that handler still points at
+  //  our reset logic it clobbers the pause/seek position.)
+  const teardownSource = useCallback(() => {
+    const source = sourceNodeRef.current;
+    if (source) {
+      source.onended = null;
+      try { source.stop(); } catch { /* already stopped */ }
+      source.disconnect();
+      sourceNodeRef.current = null;
+    }
+  }, []);
+
+  // Initialize / reset when a new audioBuffer arrives.
   useEffect(() => {
     if (audioBuffer) {
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext();
       }
       setDuration(audioBuffer.duration);
-      setCurrentTime(0);
-      setIsPlaying(false); // Reset play state when new audio loads
+      durationRef.current = audioBuffer.duration;
+      setIsPlaying(false);
 
-      // Clean up previous source if it exists
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-      }
-      pausedAtRef.current = 0; // Reset paused position
-      playbackStartTimeRef.current = 0; // Reset playback start time
-
-      // Stop any ongoing animation frame loop
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
+      teardownSource();
+      pausedAtRef.current = 0;
+      playbackStartTimeRef.current = 0;
+      cancelProgressLoop();
+      setPosition(0, true);
     }
 
     return () => {
-      // Cleanup on unmount
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-      }
+      teardownSource();
+      cancelProgressLoop();
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        audioContextRef.current.close().catch(() => { /* noop */ });
         audioContextRef.current = null;
       }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
     };
-  }, [audioBuffer]);
+  }, [audioBuffer, teardownSource, cancelProgressLoop, setPosition]);
 
   const updateProgressBar = useCallback(() => {
-    // Use isPlayingRef.current for the latest state
-    if (audioContextRef.current && isPlayingRef.current && sourceNodeRef.current) {
-      // Calculate how much time has passed in the AudioContext since playbackStartTimeRef.current
-      const timeElapsedSinceStartCall = audioContextRef.current.currentTime - playbackStartTimeRef.current;
-      // Convert that elapsed time into logical audio time, considering playback rate
-      const logicalTimeElapsed = timeElapsedSinceStartCall * AUDIO_PLAYBACK_RATE;
-      // Add the logical time we were at when playback resumed
-      const newCurrentTime = pausedAtRef.current + logicalTimeElapsed;
-
-      setCurrentTime(Math.min(newCurrentTime, duration));
-
-      if (newCurrentTime < duration) {
-        animationFrameRef.current = requestAnimationFrame(updateProgressBar);
-      } else {
-        // Playback finished, reset state
-        setIsPlaying(false);
-        setCurrentTime(duration);
-        pausedAtRef.current = 0;
-        playbackStartTimeRef.current = 0;
-        if (sourceNodeRef.current) {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-        }
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-      }
-    } else if (!isPlayingRef.current && animationFrameRef.current) { // If somehow still running while paused
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-    }
-  }, [duration]); // isPlaying is removed from dependencies because we use isPlayingRef.current
-
-  const startPlayback = useCallback((startOffset: number) => { // startOffset is the logical time in seconds
-    if (!audioBuffer || !audioContextRef.current) return;
-
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
+    const ctx = audioContextRef.current;
+    if (!ctx || !sourceNodeRef.current) {
+      cancelProgressLoop();
+      return;
     }
 
-    const newSource = audioContextRef.current.createBufferSource();
-    newSource.buffer = audioBuffer;
-    newSource.connect(audioContextRef.current.destination);
-    newSource.playbackRate.value = AUDIO_PLAYBACK_RATE;
+    const elapsed = (ctx.currentTime - playbackStartTimeRef.current) * AUDIO_PLAYBACK_RATE;
+    const time = pausedAtRef.current + elapsed;
+    const total = durationRef.current;
 
-    const bufferOffset = startOffset / AUDIO_PLAYBACK_RATE; // Where to start in the audio buffer
-
-    newSource.start(0, bufferOffset); // Play immediately from bufferOffset
-
-    playbackStartTimeRef.current = audioContextRef.current.currentTime; // The exact audio context time when `start` was called
-    pausedAtRef.current = startOffset; // The logical time (what's displayed) when we started/resumed
-
-    newSource.onended = () => {
-      setIsPlaying(false);
-      setCurrentTime(duration);
+    if (time < total) {
+      setPosition(time);
+      animationFrameRef.current = requestAnimationFrame(updateProgressBar);
+    } else {
+      // Reached the natural end of playback.
+      setPosition(total, true);
       pausedAtRef.current = 0;
       playbackStartTimeRef.current = 0;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      if (sourceNodeRef.current) {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-      }
+      teardownSource();
+      cancelProgressLoop();
+      setIsPlaying(false);
+    }
+  }, [cancelProgressLoop, teardownSource, setPosition]);
+
+  const startPlayback = useCallback((startOffset: number) => {
+    const ctx = audioContextRef.current;
+    if (!audioBuffer || !ctx) return;
+
+    // Browsers create the context in a "suspended" state until a user gesture.
+    if (ctx.state === 'suspended') ctx.resume().catch(() => { /* noop */ });
+
+    teardownSource();
+    cancelProgressLoop();
+
+    const total = audioBuffer.duration;
+    const clampedOffset = Math.max(0, Math.min(startOffset, total));
+
+    const newSource = ctx.createBufferSource();
+    newSource.buffer = audioBuffer;
+    newSource.connect(ctx.destination);
+    newSource.playbackRate.value = AUDIO_PLAYBACK_RATE;
+    newSource.start(0, clampedOffset / AUDIO_PLAYBACK_RATE);
+
+    playbackStartTimeRef.current = ctx.currentTime;
+    pausedAtRef.current = clampedOffset;
+
+    // Only fires for a natural end here - deliberate stops null this out first.
+    newSource.onended = () => {
+      if (sourceNodeRef.current !== newSource) return;
+      sourceNodeRef.current = null;
+      pausedAtRef.current = 0;
+      playbackStartTimeRef.current = 0;
+      cancelProgressLoop();
+      setPosition(durationRef.current, true);
+      setIsPlaying(false);
     };
+
     sourceNodeRef.current = newSource;
+    setPosition(clampedOffset, true);
     setIsPlaying(true);
     animationFrameRef.current = requestAnimationFrame(updateProgressBar);
-  }, [audioBuffer, duration, updateProgressBar]);
-
-  const playAudio = useCallback(() => {
-    startPlayback(currentTime);
-  }, [currentTime, startPlayback]);
+  }, [audioBuffer, cancelProgressLoop, teardownSource, updateProgressBar, setPosition]);
 
   const pauseAudio = useCallback(() => {
-    if (sourceNodeRef.current && audioContextRef.current) {
-      sourceNodeRef.current.stop();
-      // Calculate current logical time at pause
-      const timeElapsedSinceStartCall = audioContextRef.current.currentTime - playbackStartTimeRef.current;
-      const logicalTimeElapsed = timeElapsedSinceStartCall * AUDIO_PLAYBACK_RATE;
-      pausedAtRef.current = pausedAtRef.current + logicalTimeElapsed;
-      
-      setIsPlaying(false);
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-  }, []);
+    const ctx = audioContextRef.current;
+    if (!sourceNodeRef.current || !ctx) return;
 
-  const togglePlayPause = () => {
+    const elapsed = (ctx.currentTime - playbackStartTimeRef.current) * AUDIO_PLAYBACK_RATE;
+    pausedAtRef.current = Math.min(pausedAtRef.current + elapsed, durationRef.current);
+
+    teardownSource();
+    cancelProgressLoop();
+    setPosition(pausedAtRef.current, true);
+    setIsPlaying(false);
+  }, [cancelProgressLoop, teardownSource, setPosition]);
+
+  const togglePlayPause = useCallback(() => {
     if (isPlaying) {
       pauseAudio();
+    } else if (currentTimeRef.current >= duration) {
+      startPlayback(0);
     } else {
-      if (currentTime >= duration) { // If at end, start from beginning
-        startPlayback(0);
-      } else {
-        playAudio();
-      }
+      startPlayback(currentTimeRef.current);
     }
-  };
+  }, [isPlaying, duration, pauseAudio, startPlayback]);
 
   const handleProgressBarClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioBuffer) return;
-
-    const progressBar = e.currentTarget;
-    const clickX = e.clientX - progressBar.getBoundingClientRect().left;
-    const percent = clickX / progressBar.offsetWidth;
-    let newTime = duration * percent;
-
-    // Ensure newTime is within bounds
-    newTime = Math.max(0, Math.min(newTime, duration));
-    
-    startPlayback(newTime);
-
+    const bar = e.currentTarget;
+    const percent = (e.clientX - bar.getBoundingClientRect().left) / bar.offsetWidth;
+    startPlayback(Math.max(0, Math.min(duration * percent, duration)));
   }, [audioBuffer, duration, startPlayback]);
 
   const skipAmount = 10; // seconds
 
   const rewindAudio = useCallback(() => {
-    let newTime = currentTime - skipAmount;
-    newTime = Math.max(0, newTime); // Don't go below 0
-    startPlayback(newTime);
-  }, [currentTime, startPlayback]);
+    startPlayback(Math.max(0, currentTimeRef.current - skipAmount));
+  }, [startPlayback]);
 
   const fastForwardAudio = useCallback(() => {
-    let newTime = currentTime + skipAmount;
-    newTime = Math.min(duration, newTime); // Don't go beyond duration
-    startPlayback(newTime);
-  }, [currentTime, duration, startPlayback]);
-
-
-  const formatTime = (timeInSeconds: number): string => {
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = Math.floor(timeInSeconds % 60);
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
+    startPlayback(Math.min(duration, currentTimeRef.current + skipAmount));
+  }, [duration, startPlayback]);
 
   if (!audioBuffer) {
     return null;
   }
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const displayRatio = duration > 0 ? Math.min(Math.max(displayTime / duration, 0), 1) : 0;
 
   return (
     <div className="flex flex-col items-center p-4 bg-white rounded-xl shadow-md w-full max-w-lg mx-auto">
       {/* Progress bar and time */}
-      <div className="flex justify-between w-full text-sm text-gray-600 mb-2">
-        <span>{formatTime(currentTime)}</span>
+      <div className="flex justify-between w-full text-sm text-gray-600 mb-2 tabular-nums">
+        <span ref={currentLabelRef}>{formatTime(displayTime)}</span>
         <span>{formatTime(duration)}</span>
       </div>
       <div className="relative w-full h-2 bg-gray-200 rounded-full cursor-pointer mb-4 overflow-hidden" onClick={handleProgressBarClick}>
         <div
-          className="absolute h-full bg-yellow-500 rounded-full transition-all duration-100 ease-linear"
-          style={{ width: `${progressPercent}%` }}
+          ref={fillRef}
+          className="absolute left-0 top-0 h-full w-full bg-yellow-500 rounded-full origin-left will-change-transform"
+          style={{ transform: `scaleX(${displayRatio})` }}
         ></div>
       </div>
 
