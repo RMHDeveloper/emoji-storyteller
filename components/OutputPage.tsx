@@ -1,18 +1,15 @@
 
 import React from 'react';
-import AudioPlayer from './AudioPlayer';
-// Fix: Import BOTTOM_LEFT_WIZARD_BUNNY_URL from constants.ts
+import NarrationPlayer from './NarrationPlayer';
 import { WIZARD_BUNNY_MASCOT_URL, BOTTOM_LEFT_WIZARD_BUNNY_URL } from '../constants';
-// Fix: Import GeneratedStoryContent from types.ts
 import { GeneratedStoryContent } from '../types';
 
 interface OutputPageProps {
-  storyContent: GeneratedStoryContent | null; // Changed to GeneratedStoryContent
-  audioBuffer: AudioBuffer | null;
+  storyContent: GeneratedStoryContent | null;
   onRestart: () => void;
 }
 
-const OutputPage: React.FC<OutputPageProps> = ({ storyContent, audioBuffer, onRestart }) => {
+const OutputPage: React.FC<OutputPageProps> = ({ storyContent, onRestart }) => {
   if (!storyContent) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen text-red-600">
@@ -67,7 +64,7 @@ const OutputPage: React.FC<OutputPageProps> = ({ storyContent, audioBuffer, onRe
 
       <div className="mb-8 w-full px-4 sm:px-6 z-10">
         <h3 className="text-xl font-semibold text-purple-600 mb-3 text-center">Listen to the Narration:</h3>
-        <AudioPlayer audioBuffer={audioBuffer} />
+        <NarrationPlayer text={storyContent.story} pitch={storyContent.pitch} />
       </div>
 
       {/* Moral of the Story section */}

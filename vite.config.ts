@@ -10,13 +10,14 @@ export default defineConfig(({ mode, command }) => {
       // root deploys (Vercel/Netlify/custom domain).
       base: command === 'build' ? (process.env.BASE_PATH ?? '/emoji-storyteller/') : '/',
       server: {
-        port: 3000,
+        port: 3001,
+        strictPort: true,
         host: '0.0.0.0',
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.OPENROUTER_API_KEY': JSON.stringify(env.OPENROUTER_API_KEY),
+        'process.env.OPENROUTER_MODEL': JSON.stringify(env.OPENROUTER_MODEL)
       },
       resolve: {
         alias: {

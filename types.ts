@@ -18,10 +18,10 @@ export interface StoryGenerationParams {
   mode: StoryMode;
 }
 
-// New interface for structured story content from the model
+// Structured story content returned by the model
 export interface GeneratedStoryContent {
   title: string;
   story: string;
   moral?: string; // Moral of the story is optional
-  voiceName?: string; // Add voiceName to store the TTS voice used for this story
+  pitch?: number; // Narration voice pitch for this story's mode
 }

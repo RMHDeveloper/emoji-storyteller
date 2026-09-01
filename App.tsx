@@ -2,19 +2,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // Fix: Import GeneratedStoryContent from './types'
 import { AppPage, StoryMode, GeneratedStoryContent } from './types';
-import { generateStory, textToSpeech } from './services/geminiService';
+import { generateStory } from './services/storyService';
 import LoadingPage from './components/LoadingPage';
 import InputPage from './components/InputPage';
 import OutputPage from './components/OutputPage';
-import { MIN_EMOJIS, MAX_EMOJIS, MODEL_CONFIG_BY_MODE } from './constants'; // Import MODEL_CONFIG_BY_MODE
+import { MIN_EMOJIS, MAX_EMOJIS } from './constants';
 import { countEmojis } from './utils';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<AppPage>(AppPage.Loading);
   const [emojis, setEmojis] = useState<string>('');
   const [selectedMode, setSelectedMode] = useState<StoryMode | null>(null);
-  const [storyContent, setStoryContent] = useState<GeneratedStoryContent | null>(null); // Changed type
-  const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [storyContent, setStoryContent] = useState<GeneratedStoryContent | null>(null);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   // Simplified status text to a single string as per the new loading page design
   const [currentLoadingStatus, setCurrentLoadingStatus] = useState<string>('Consulting the Emoji Oracle...');
@@ -83,27 +82,16 @@ const App: React.FC = () => {
     setError(null);
     setCurrentPage(AppPage.Loading);
     setLoadingProgress(0);
-    setCurrentLoadingStatus('Crafting your magical story...'); // New status for story generation
+    setCurrentLoadingStatus('Crafting your magical story...');
     setStoryContent(null); // Reset story content
-    setAudioBuffer(null);
     setShowStartButton(false);
 
     try {
-      // Step 1: Generate Story
-      setLoadingProgress(20); // Initial progress for story generation
+      setLoadingProgress(20);
       const generatedContent: GeneratedStoryContent = await generateStory({ emojis, mode: selectedMode });
       setStoryContent(generatedContent);
-      setLoadingProgress(70); // Progress after story text is generated
-      setCurrentLoadingStatus('Generating heartwarming narration...'); // New status for audio generation
-      
-      const voiceToUse = generatedContent.voiceName;
+      setLoadingProgress(100);
 
-      // Step 2: Generate Audio from the story content
-      const generatedAudioBuffer = await textToSpeech(generatedContent.story, voiceToUse); // Pass voiceToUse
-      setAudioBuffer(generatedAudioBuffer);
-      setLoadingProgress(100); // Progress after audio is generated
-
-      // Removed the setTimeout for instant transition
       setCurrentPage(AppPage.Output);
     } catch (err: any) {
       console.error('Story generation error:', err);
@@ -119,7 +107,6 @@ const App: React.FC = () => {
     setEmojis('');
     setSelectedMode(null);
     setStoryContent(null); // Reset story content
-    setAudioBuffer(null);
     setError(null);
     setLoadingProgress(0);
     setShowStartButton(false);
@@ -148,7 +135,7 @@ const App: React.FC = () => {
         />
       )}
       {currentPage === AppPage.Output && (
-        <OutputPage storyContent={storyContent} audioBuffer={audioBuffer} onRestart={handleRestart} />
+        <OutputPage storyContent={storyContent} onRestart={handleRestart} />
       )}
       {/* Removed global <style> block as its rules are either obsolete or handled dynamically */}
     </div>

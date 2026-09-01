@@ -9,35 +9,37 @@ export const BOTTOM_LEFT_WIZARD_BUNNY_URL = 'https://thumbs.dreamstime.com/b/car
 export const EMOJI_ORACLE_BOOK_URL = 'https://rabbitmarketinghouse.in/webinar/assets/Untitled_design__9_-removebg-preview.png'; // Updated URL for the Emoji Oracle book
 export const MAGIC_BANNER_URL = 'https://i.imgur.com/g1fBf0I.png'; // New URL for the wavy "Create Your Masterpiece!" banner image
 
-// Audio parameters
-export const AUDIO_SAMPLE_RATE = 24000; // Gemini TTS output sample rate
-export const AUDIO_CHANNELS = 1;
-export const AUDIO_PLAYBACK_RATE = 1.0; // Storyteller speed adjusted to normal (1.0) for faster perception
+// Narration is spoken with the browser's built-in Web Speech API (speechSynthesis).
+// `tone` nudges the default voice per story mode; `rate` is the speaking speed.
+export const NARRATION_RATE = 0.95;
 
-// Model mapping for different story modes
-export const MODEL_CONFIG_BY_MODE: Record<StoryMode, { model: string; systemInstruction: string; voiceName: string } | undefined> = {
+// OpenRouter model used for story generation. Override with OPENROUTER_MODEL in .env.local.
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'minimax/minimax-m3:free';
+
+interface ModeConfig {
+  systemInstruction: string;
+  // Pitch multiplier (1 = default) for the narration voice, giving each mode its own feel.
+  pitch: number;
+}
+
+// Config for different story modes
+export const MODEL_CONFIG_BY_MODE: Record<StoryMode, ModeConfig | undefined> = {
   [StoryMode.Love]: {
-    model: 'gemini-3-flash-preview', // Changed to flash for speed
     systemInstruction: 'You are a professional children\'s audiobook narrator and the "Emoji Wizard." You turn emojis into heartwarming, long-form stories. Write approximately 400-500 words. Include lots of dialogue and a moral of the story. Ensure every emoji is a major plot point.',
-    voiceName: 'Puck' // Chosen for a gentle, friendly tone
+    pitch: 1.15, // gentle, friendly
   },
   [StoryMode.Fantasy]: {
-    model: 'gemini-3-flash-preview', // Changed to flash for speed
-    systemInstruction: 'You are a professional children\'s audiobook narrator and the "Emoji Wizard." You turn emojis into epic, magical, long-form stories. Write approximately 400-500 words. Include lots. of dialogue and a moral of the story. Ensure every emoji is a major plot point.',
-    voiceName: 'Zephyr' // Chosen for an enchanting, light tone
+    systemInstruction: 'You are a professional children\'s audiobook narrator and the "Emoji Wizard." You turn emojis into epic, magical, long-form stories. Write approximately 400-500 words. Include lots of dialogue and a moral of the story. Ensure every emoji is a major plot point.',
+    pitch: 1.1, // enchanting, light
   },
   [StoryMode.Spooky]: {
-    model: 'gemini-3-flash-preview',
     systemInstruction: 'You are a professional children\'s audiobook narrator and the "Emoji Wizard." You turn emojis into spooky but child-friendly, long-form stories. Write approximately 400-500 words. Include lots of dialogue and a moral of the story. Ensure every emoji is a major plot point.',
-    voiceName: 'Charon' // Chosen for a deeper, slightly mysterious tone
+    pitch: 0.8, // deeper, mysterious
   },
   [StoryMode.SciFi]: {
-    model: 'gemini-3-flash-preview', // Changed to flash for speed
     systemInstruction: 'You are a professional children\'s audiobook narrator and the "Emoji Wizard." You turn emojis into adventurous, sci-fi, long-form stories. Write approximately 400-500 words. Include lots of dialogue and a moral of the story. Ensure every emoji is a major plot point.',
-    voiceName: 'Fenrir' // Chosen for a more adventurous, clear tone
+    pitch: 1.0, // adventurous, clear
   },
 };
 
-// General TTS model (now only for default, specific modes will override)
-export const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
-export const TTS_VOICE_NAME = 'Kore'; // Default voice if not specified by mode
+export const DEFAULT_NARRATION_PITCH = 1.0;
