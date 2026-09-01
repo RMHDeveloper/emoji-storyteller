@@ -4,11 +4,15 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode, command }) => {
     const env = loadEnv(mode, '.', '');
+
+    // GitHub Pages serves from /emoji-storyteller/; Vercel/Netlify/custom domains
+    // serve from the root. Vercel sets VERCEL=1 automatically. Override either way
+    // with an explicit BASE_PATH. Dev server always stays at '/'.
+    const buildBase =
+      process.env.BASE_PATH ?? (process.env.VERCEL ? '/' : '/emoji-storyteller/');
+
     return {
-      // Production build is served from https://<user>.github.io/emoji-storyteller/
-      // on GitHub Pages. Dev server stays at '/'. Override with BASE_PATH for
-      // root deploys (Vercel/Netlify/custom domain).
-      base: command === 'build' ? (process.env.BASE_PATH ?? '/emoji-storyteller/') : '/',
+      base: command === 'build' ? buildBase : '/',
       server: {
         port: 3001,
         strictPort: true,
