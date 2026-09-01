@@ -25,6 +25,10 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
       - uses: actions/configure-pages@v5
+        with:
+          # Enable Pages (build type "workflow") on first run so the deploy
+          # doesn't require flipping the repo's Settings > Pages toggle by hand.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
