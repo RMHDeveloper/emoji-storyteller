@@ -20,7 +20,6 @@ export default defineConfig(({ mode, command }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.OPENROUTER_API_KEY': JSON.stringify(env.OPENROUTER_API_KEY),
         'process.env.OPENROUTER_MODEL': JSON.stringify(env.OPENROUTER_MODEL)
       },
       resolve: {

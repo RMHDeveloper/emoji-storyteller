@@ -1,17 +1,7 @@
 import { StoryGenerationParams, GeneratedStoryContent } from '../types';
 import { MODEL_CONFIG_BY_MODE, OPENROUTER_MODEL } from '../constants';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-
-function getApiKey(): string {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) {
-    throw new Error(
-      'Missing OpenRouter API key. Set OPENROUTER_API_KEY in your .env.local file and restart the dev server.',
-    );
-  }
-  return key;
-}
+const PROXY_URL = '/api/proxy';
 
 const PROMPT_SUFFIX = `Respond with ONLY a single JSON object and nothing else. Escape every double quote that appears inside a string value. Use this exact shape:
 {
@@ -101,14 +91,10 @@ function parseStoryPayload(content: string): GeneratedStoryContent {
 async function requestStory(emojis: string, systemInstruction: string): Promise<GeneratedStoryContent> {
   let response: Response;
   try {
-    response = await fetch(OPENROUTER_URL, {
+    response = await fetch(PROXY_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${getApiKey()}`,
         'Content-Type': 'application/json',
-        // Optional attribution headers OpenRouter uses for its dashboard.
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Emoji Storyteller',
       },
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
@@ -123,23 +109,23 @@ async function requestStory(emojis: string, systemInstruction: string): Promise<
       }),
     });
   } catch (networkError) {
-    console.error('OpenRouter request failed:', networkError);
-    throw new Error('Could not reach OpenRouter. Check your connection and try again.');
+    console.error('Proxy request failed:', networkError);
+    throw new Error('Could not reach the story generator. Check your connection and try again.');
   }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
-    console.error('OpenRouter error response:', response.status, detail);
+    console.error('Proxy error response:', response.status, detail);
     if (response.status === 401) {
-      throw new Error('OpenRouter rejected the API key. Check OPENROUTER_API_KEY in .env.local.');
+      throw new Error('The story generator rejected the request. Please try again later.');
     }
     if (response.status === 402) {
-      throw new Error('OpenRouter account is out of credits. Add credits at https://openrouter.ai/settings/credits.');
+      throw new Error('The story generator is out of credits. Please try again later.');
     }
     if (response.status === 429) {
-      throw new Error('OpenRouter rate limit hit. Wait for the daily reset or add credits, then try again.');
+      throw new Error('Rate limit hit. Please wait a moment and try again.');
     }
-    throw new Error(`OpenRouter request failed (${response.status}). ${detail.slice(0, 200)}`);
+    throw new Error(`Story generation request failed (${response.status}). ${detail.slice(0, 200)}`);
   }
 
   const data = await response.json();
