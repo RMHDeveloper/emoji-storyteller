@@ -14,7 +14,9 @@ export const MAGIC_BANNER_URL = 'https://i.imgur.com/g1fBf0I.png'; // New URL fo
 export const NARRATION_RATE = 0.95;
 
 // OpenRouter model used for story generation. Override with OPENROUTER_MODEL in .env.local.
-export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'minimax/minimax-m3:free';
+// minimax/minimax-m3:free was retired by OpenRouter (paid-only now); qwen3.8-27b:free
+// supports response_format/structured outputs, which this app requires.
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'qwen/qwen3.8-27b:free';
 
 interface ModeConfig {
   systemInstruction: string;
